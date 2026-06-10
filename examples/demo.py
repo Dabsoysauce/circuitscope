@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from circuitscope.pipeline import run_pipeline
+from circuitscope.pipeline import run_feature_pipeline, run_pipeline
 
 
 def main():
@@ -18,7 +18,19 @@ def main():
     ap.add_argument("--model", default="gpt2")
     ap.add_argument("--device", default=None)
     ap.add_argument("--sae", action="store_true")
+    ap.add_argument("--features", action="store_true",
+                    help="also discover an SAE-feature circuit for IOI")
     args = ap.parse_args()
+
+    if args.features:
+        print("\n" + "=" * 70)
+        print(f"  FEATURE CIRCUIT:  {args.model}  /  ioi")
+        print("=" * 70)
+        fres = run_feature_pipeline(model_name=args.model, behavior_name="ioi",
+                                    device=args.device, target_faithfulness=0.8)
+        fc = fres.circuit
+        print(f"\n{fc.n_features} SAE features | faithfulness {fc.faithfulness:.1%} "
+              f"(errors-only {fc.errors_only_baseline:.1%}) | diagram {fres.html_path}")
 
     for behavior in ("ioi", "greater_than"):
         print("\n" + "=" * 70)

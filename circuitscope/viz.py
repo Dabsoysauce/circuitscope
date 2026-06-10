@@ -178,6 +178,110 @@ function showDetail(n){{
 </script></body></html>"""
 
 
+def feature_circuit_to_dict(fc, n_layers: int = 12) -> dict:
+    feats = [n for n in fc.nodes if not n.is_error]
+    nodes = []
+    for n in sorted(feats, key=lambda n: (n.layer, -abs(n.ie))):
+        lab = fc.labels.get(n.name, {})
+        nodes.append({
+            "id": n.name,
+            "layer": n.layer,
+            "ie": round(n.ie, 4),
+            "promotes": lab.get("promotes", [])[:5],
+        })
+    edges = [{"src": e.src, "dst": e.dst, "weight": e.weight} for e in fc.edges]
+    return {
+        "behavior_metrics": {
+            "clean": round(fc.clean_metric, 4),
+            "corrupt": round(fc.corrupt_metric, 4),
+            "circuit": round(fc.metric_value, 4),
+        },
+        "faithfulness": round(fc.faithfulness, 4),
+        "completeness": round(fc.completeness, 4),
+        "errors_only_baseline": round(fc.errors_only_baseline, 4),
+        "target_faithfulness": fc.target_faithfulness,
+        "include_errors": fc.include_errors,
+        "faithfulness_curve": fc.faithfulness_curve,
+        "n_features": fc.n_features,
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
+_FEATURE_HTML = """<!doctype html>
+<html><head><meta charset="utf-8"><title>circuitscope features — {title}</title>
+<style>
+  body {{ margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background:#0d1117; color:#e6edf3; }}
+  #wrap {{ display:flex; height:100vh; }}
+  #stage {{ flex:1; }}
+  #side {{ width:340px; padding:18px; border-left:1px solid #30363d; overflow:auto; font-size:13px; }}
+  h1 {{ font-size:16px; margin:0 0 4px; }}
+  .sub {{ color:#8b949e; font-size:12px; margin-bottom:14px; }}
+  .stat {{ display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #21262d; }}
+  .stat b {{ color:#58a6ff; }}
+  #detail {{ margin-top:16px; padding:10px; background:#161b22; border-radius:8px; min-height:60px; }}
+  #detail h3 {{ margin:0 0 6px; font-size:14px; color:#79c0ff; font-family:monospace; }}
+  .tok {{ display:inline-block; background:#21262d; border-radius:4px; padding:1px 6px; margin:2px; font-family:monospace; font-size:12px; }}
+  text {{ fill:#e6edf3; font-size:10px; pointer-events:none; }}
+  .lyr {{ fill:#8b949e; font-size:11px; }}
+  .node {{ cursor:pointer; }}
+  .node:hover circle {{ stroke:#fff; stroke-width:2px; }}
+</style></head>
+<body><div id="wrap">
+<svg id="stage"></svg>
+<div id="side">
+  <h1>circuitscope · features</h1>
+  <div class="sub">{title}</div>
+  <div class="stat"><span>Clean metric</span><b>{clean}</b></div>
+  <div class="stat"><span>Corrupt metric</span><b>{corrupt}</b></div>
+  <div class="stat"><span>Faithfulness (feats+err)</span><b>{faith}</b></div>
+  <div class="stat"><span>Errors-only baseline</span><b>{errbase}</b></div>
+  <div class="stat"><span>Completeness</span><b>{complete}</b></div>
+  <div class="stat"><span>SAE features in circuit</span><b>{nfeat}</b></div>
+  <div class="sub" style="margin-top:12px;">Node = SAE feature, placed by layer (bottom→top).
+  Size = |indirect effect|; blue supports, red opposes. Hover for promoted tokens.</div>
+  <div id="detail">Hover a feature node.</div>
+</div></div>
+<script>
+const DATA = {data};
+const svg=document.getElementById('stage'), NS='http://www.w3.org/2000/svg';
+const W=svg.clientWidth||900, H=svg.clientHeight||800, NL={n_layers};
+const layers=[...new Set(DATA.nodes.map(n=>n.layer))].sort((a,b)=>a-b);
+const yOf=l=> H-50 - (layers.indexOf(l))*((H-100)/Math.max(1,layers.length-1));
+const lane={{}}; DATA.nodes.forEach(n=>{{(lane[n.layer]=lane[n.layer]||[]).push(n);}});
+const pos={{}};
+Object.entries(lane).forEach(([l,arr])=>{{arr.forEach((n,i)=>{{pos[n.id]={{x:90+(i+1)*((W-180)/(arr.length+1)), y:yOf(+l)}};}});}});
+layers.forEach(l=>{{const t=document.createElementNS(NS,'text');t.setAttribute('class','lyr');t.setAttribute('x',12);t.setAttribute('y',yOf(l)+3);t.textContent='L'+l;svg.appendChild(t);}});
+const maxW=Math.max(1e-6,...DATA.edges.map(e=>Math.abs(e.weight)));
+DATA.edges.forEach(e=>{{const a=pos[e.src],b=pos[e.dst];if(!a||!b)return;const p=document.createElementNS(NS,'path');
+  const mx=(a.x+b.x)/2,my=(a.y+b.y)/2; p.setAttribute('d',`M${{a.x}},${{a.y}} Q${{mx+25}},${{my}} ${{b.x}},${{b.y}}`);
+  p.setAttribute('fill','none');p.setAttribute('stroke',e.weight>=0?'#58a6ff':'#f85149');
+  p.setAttribute('stroke-width',(0.5+3*Math.abs(e.weight)/maxW).toFixed(2));p.setAttribute('stroke-opacity','0.4');svg.appendChild(p);}});
+const maxIe=Math.max(1e-6,...DATA.nodes.map(n=>Math.abs(n.ie)));
+DATA.nodes.forEach(n=>{{const p=pos[n.id];const g=document.createElementNS(NS,'g');g.setAttribute('class','node');
+  const c=document.createElementNS(NS,'circle');c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);
+  c.setAttribute('r',(4+12*Math.abs(n.ie)/maxIe).toFixed(1));c.setAttribute('fill',n.ie>=0?'#3fb950':'#f85149');
+  c.setAttribute('fill-opacity','0.85');g.appendChild(c);
+  g.addEventListener('mouseenter',()=>{{let h=`<h3>${{n.id}}</h3><div class="sub">indirect effect ${{n.ie>=0?'+':''}}${{n.ie}}</div>`;
+    if(n.promotes&&n.promotes.length){{h+='promotes:';n.promotes.forEach(t=>h+=`<span class="tok">${{(t+'').replace(/</g,'&lt;')}}</span>`);}}
+    document.getElementById('detail').innerHTML=h;}});
+  svg.appendChild(g);}});
+</script></body></html>"""
+
+
+def render_feature_html(fc, n_layers: int, title: str) -> str:
+    data = feature_circuit_to_dict(fc, n_layers)
+    return _FEATURE_HTML.format(
+        title=title, data=json.dumps(data), n_layers=n_layers,
+        clean=data["behavior_metrics"]["clean"],
+        corrupt=data["behavior_metrics"]["corrupt"],
+        faith=f'{data["faithfulness"]:.2%}',
+        errbase=f'{data["errors_only_baseline"]:.2%}',
+        complete=f'{data["completeness"]:.2%}',
+        nfeat=data["n_features"],
+    )
+
+
 def render_html(circuit: Circuit, labels: dict | None, n_layers: int, title: str) -> str:
     data = circuit_to_dict(circuit, labels, n_layers)
     return _HTML_TEMPLATE.format(

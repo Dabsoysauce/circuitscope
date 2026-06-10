@@ -15,10 +15,17 @@ the [SAE4DLM / DLM-Scope](../SAE4DLM-CE) line of work from *labeling features* t
 
 ```bash
 pip install -e .                       # installs torch + transformer_lens
-circuitscope --model gpt2 --behavior ioi
-# -> outputs/circuit_gpt2_ioi.html  (open in a browser)
-# -> outputs/circuit_gpt2_ioi.json
+circuitscope --model gpt2 --behavior ioi                  # component circuit
+circuitscope --model gpt2 --behavior ioi --mode features  # SAE-feature circuit
+# -> outputs/circuit_gpt2_ioi[ _features ].html  (open in a browser)
+# -> outputs/circuit_gpt2_ioi[ _features ].json
 ```
+
+Two granularities of circuit:
+
+* **`--mode components`** (default): nodes are attention heads / MLPs.
+* **`--mode features`**: nodes are individual **SAE features** across all layers —
+  the frontier granularity of Marks et al. (2024) / attribution graphs.
 
 ---
 
@@ -103,6 +110,32 @@ attends to the subject. Faithfulness ≈ 70% at the default target, completeness
 ≈ 100% (ablating the circuit destroys the behavior).
 
 ---
+
+## Sparse feature circuits (`--mode features`)
+
+Instead of "which heads/MLPs?", this asks **"which SAE features, across layers,
+implement the behavior?"** ([feature_circuit.py](circuitscope/feature_circuit.py),
+[sae_bank.py](circuitscope/sae_bank.py)). It:
+
+1. decomposes `hook_resid_pre` at every layer into SAE features + an *error* term
+   (using the `gpt2-small-res-jb` SAEs, 24,576 features/layer);
+2. attributes the metric to each feature in one backward pass —
+   `IE(feat) = (f_clean − f_corrupt) · (∂metric/∂resid · Wdec)`;
+3. selects the smallest feature set and **validates it exactly**: re-runs the
+   model on the corrupt input with each layer's residual set to
+   `corrupt_resid + Σ_circuit (f_clean − f_corrupt)·Wdec` (+ clean error term).
+   Downstream attention/MLP fully re-runs, so cross-position effects are exact —
+   this is a real causal measurement, not the linear approximation;
+4. estimates direct-path edges `edge(u→d) = mean(Δf_u)·(Wdec[u]·Wenc[d])`;
+5. labels each feature by the tokens its decoder direction promotes.
+
+On GPT-2 / IOI it recovers an interpretable feature circuit: **person-name
+detectors** (L5/L3 → "Gerrard/Avery"), a **specific-name feature** (L11 →
+"Steven"), **conjunction features** for the "X and Y" frame (L7/L8 → "and"), and
+**subject-tracking** features (L7/L8 → "'s / himself"). Faithfulness reaches 80%
+(over a 40% errors-only baseline), completeness 100%. Error nodes (the part the
+SAE can't reconstruct) are kept as the uninterpreted remainder, per the
+literature — the headline is how few *features* are needed on top of them.
 
 ## Built-in behaviors
 
