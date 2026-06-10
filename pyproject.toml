@@ -1,0 +1,26 @@
+[project]
+name = "circuitscope"
+version = "0.1.0"
+description = "Automated circuit discovery with causal validation for transformer language models."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "transformer_lens>=2.0",
+    "numpy",
+    "pandas",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+sae = ["sae_lens>=3.0"]
+
+[project.scripts]
+circuitscope = "circuitscope.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["circuitscope*"]
