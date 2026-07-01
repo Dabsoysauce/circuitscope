@@ -36,6 +36,7 @@ def run_pipeline(
     use_sae: bool = True,
     node_patching: bool = True,
     metric: str = "logit_diff",
+    describe: str | None = None,
     device: str | None = None,
     out_dir: str | Path = "outputs",
     behavior: BehaviorSpec | None = None,
@@ -49,8 +50,15 @@ def run_pipeline(
     model = PatchableModel(model_name, device=device)
     log(f"      device={model.device}  graph={model.graph.summary()}")
 
-    log(f"[2/6] building behavior '{behavior_name}' (metric={metric}) ...")
-    behavior = behavior or get_behavior(behavior_name, n=n_examples)
+    if describe and behavior is None:
+        from circuitscope.autospec import generate_behavior
+
+        log(f"[2/6] auto-speccing behavior from description: {describe!r} ...")
+        behavior = generate_behavior(describe, model, n_examples=n_examples, log=log).behavior
+        behavior_name = behavior.name
+    else:
+        log(f"[2/6] building behavior '{behavior_name}' (metric={metric}) ...")
+        behavior = behavior or get_behavior(behavior_name, n=n_examples)
     behavior.metric_name = metric
     behavior.tokenize(model).to(model.device)
     log(f"      {behavior.batch_size()} prompt pairs, seq len {behavior.clean_tokens.shape[1]}")

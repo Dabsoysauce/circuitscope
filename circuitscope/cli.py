@@ -17,6 +17,9 @@ def main(argv=None) -> int:
     p.add_argument("--model", default="gpt2", help="HookedTransformer name (default: gpt2)")
     p.add_argument("--behavior", default="ioi",
                    help=f"behavior name; built-in: {list_behaviors()}")
+    p.add_argument("--describe", default=None, metavar="TEXT",
+                   help="auto-spec a behavior from a natural-language description "
+                        "(uses the Claude API; overrides --behavior; components mode)")
     p.add_argument("--mode", default="components", choices=["components", "features"],
                    help="'components' = head/MLP circuit (EAP+ACDC); "
                         "'features' = sparse SAE-feature circuit")
@@ -60,6 +63,7 @@ def main(argv=None) -> int:
             max_edges=args.max_edges,
             use_sae=not args.no_sae,
             metric=args.metric,
+            describe=args.describe,
             device=args.device,
             out_dir=args.out,
         )
