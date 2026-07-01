@@ -125,7 +125,7 @@ class CircuitRunner:
         )
         if return_logits:
             return logits
-        return self.behavior.logit_diff(logits)
+        return self.behavior.metric(logits)
 
     @torch.no_grad()
     def metric(self, kept_edges: set[str]) -> float:
@@ -138,9 +138,11 @@ def baseline_metrics(model: PatchableModel, behavior: BehaviorSpec) -> dict[str,
     behavior.to(model.device)
     clean_logits = model.model(behavior.clean_tokens, return_type="logits")
     corrupt_logits = model.model(behavior.corrupt_tokens, return_type="logits")
+    if behavior.metric_name == "neg_kl" and behavior.reference_logprobs is None:
+        behavior.set_reference(clean_logits)
     return {
-        "clean": float(behavior.logit_diff(clean_logits).item()),
-        "corrupt": float(behavior.logit_diff(corrupt_logits).item()),
+        "clean": float(behavior.metric(clean_logits).item()),
+        "corrupt": float(behavior.metric(corrupt_logits).item()),
     }
 
 
@@ -192,6 +194,6 @@ def patch_nodes(model: PatchableModel, behavior: BehaviorSpec) -> dict[str, floa
         logits = hm.run_with_hooks(
             behavior.corrupt_tokens, fwd_hooks=[(hook_name, patcher)], return_type="logits"
         )
-        m = float(behavior.logit_diff(logits).item())
+        m = float(behavior.metric(logits).item())
         results[n.name] = (m - base["corrupt"]) / denom
     return results

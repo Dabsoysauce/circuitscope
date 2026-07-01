@@ -133,7 +133,7 @@ class FeatureCircuitDiscoverer:
         self.hm.zero_grad(set_to_none=True)
         logits = self.hm.run_with_hooks(self.behavior.clean_tokens, fwd_hooks=hooks,
                                         return_type="logits")
-        self.behavior.logit_diff(logits).backward()
+        self.behavior.attribution_metric(logits).backward()
 
         nodes: list[FeatureNode] = []
         for L in self.layers:
@@ -177,7 +177,7 @@ class FeatureCircuitDiscoverer:
         hooks = [(self.bank.hook(L), make_hook(L)) for L in self.layers]
         logits = self.hm.run_with_hooks(self.behavior.corrupt_tokens, fwd_hooks=hooks,
                                         return_type="logits")
-        return float(self.behavior.logit_diff(logits).item())
+        return float(self.behavior.metric(logits).item())
 
     def discover(self, target_faithfulness: float = 0.8,
                  max_features: int = 400) -> FeatureCircuit:
@@ -275,7 +275,7 @@ class FeatureCircuitDiscoverer:
         hooks = [h for h in hooks if h[1] is not None]
         logits = self.hm.run_with_hooks(self.behavior.clean_tokens, fwd_hooks=hooks,
                                         return_type="logits")
-        m = float(self.behavior.logit_diff(logits).item())
+        m = float(self.behavior.metric(logits).item())
         # ablating the circuit should collapse the behavior; clamp to [0,1] since
         # overshoot past the corrupt baseline still just means "fully complete".
         return float(min(1.0, max(0.0, 1.0 - (m - corrupt) / denom)))

@@ -35,6 +35,7 @@ def run_pipeline(
     max_edges: int | None = None,
     use_sae: bool = True,
     node_patching: bool = True,
+    metric: str = "logit_diff",
     device: str | None = None,
     out_dir: str | Path = "outputs",
     behavior: BehaviorSpec | None = None,
@@ -48,8 +49,9 @@ def run_pipeline(
     model = PatchableModel(model_name, device=device)
     log(f"      device={model.device}  graph={model.graph.summary()}")
 
-    log(f"[2/6] building behavior '{behavior_name}' ...")
+    log(f"[2/6] building behavior '{behavior_name}' (metric={metric}) ...")
     behavior = behavior or get_behavior(behavior_name, n=n_examples)
+    behavior.metric_name = metric
     behavior.tokenize(model).to(model.device)
     log(f"      {behavior.batch_size()} prompt pairs, seq len {behavior.clean_tokens.shape[1]}")
 
@@ -113,6 +115,7 @@ def run_feature_pipeline(
     layers: list[int] | None = None,
     include_errors: bool = True,
     max_features: int = 400,
+    metric: str = "logit_diff",
     device: str | None = None,
     out_dir: str | Path = "outputs",
     behavior: BehaviorSpec | None = None,
@@ -132,8 +135,9 @@ def run_feature_pipeline(
     layers = layers if layers is not None else list(range(model.n_layers))
     log(f"      device={model.device}, decomposing layers {layers}")
 
-    log(f"[2/5] building behavior '{behavior_name}' and loading {len(layers)} SAEs ...")
+    log(f"[2/5] building behavior '{behavior_name}' (metric={metric}) and loading {len(layers)} SAEs ...")
     behavior = behavior or get_behavior(behavior_name, n=n_examples)
+    behavior.metric_name = metric
     behavior.tokenize(model).to(model.device)
     bank = SAEBank(layers, device=model.device)
     log(f"      d_sae={bank.d_sae} per layer")

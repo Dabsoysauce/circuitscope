@@ -106,7 +106,7 @@ def compute_eap_scores(model: PatchableModel, behavior: BehaviorSpec) -> EAPResu
 
     hm.zero_grad(set_to_none=True)
     logits = hm.run_with_hooks(behavior.clean_tokens, fwd_hooks=fwd2, return_type="logits")
-    metric = behavior.logit_diff(logits)
+    metric = behavior.attribution_metric(logits)
     metric.backward()
 
     batch = behavior.batch_size()

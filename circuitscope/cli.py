@@ -30,6 +30,10 @@ def main(argv=None) -> int:
     p.add_argument("--layers", default=None,
                    help="[features] comma-separated layers to decompose (default: all)")
     p.add_argument("--no-sae", action="store_true", help="[components] skip SAE feature labeling")
+    p.add_argument("--metric", default="logit_diff",
+                   choices=["logit_diff", "prob_diff", "logprob", "neg_kl"],
+                   help="behavior metric (neg_kl: validation only; attribution "
+                        "falls back to logit_diff)")
     p.add_argument("--device", default=None, help="cuda / mps / cpu (auto if unset)")
     p.add_argument("--out", default="outputs", help="output directory")
     args = p.parse_args(argv)
@@ -43,6 +47,7 @@ def main(argv=None) -> int:
             target_faithfulness=args.faithfulness,
             layers=layers,
             max_features=args.max_features,
+            metric=args.metric,
             device=args.device,
             out_dir=args.out,
         )
@@ -54,6 +59,7 @@ def main(argv=None) -> int:
             target_faithfulness=args.faithfulness,
             max_edges=args.max_edges,
             use_sae=not args.no_sae,
+            metric=args.metric,
             device=args.device,
             out_dir=args.out,
         )

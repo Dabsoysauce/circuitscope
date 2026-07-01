@@ -39,6 +39,8 @@ class BehaviorSpec:
     wrong_ids: Optional[torch.Tensor] = None
     answer_position: int = -1  # position whose logits define the answer
     answer_index: Optional[torch.Tensor] = None  # per-example last-real-token index
+    metric_name: str = "logit_diff"  # see circuitscope.metrics
+    reference_logprobs: Optional[torch.Tensor] = None  # for neg_kl
     extra: dict = field(default_factory=dict)
 
     def tokenize(self, model) -> "BehaviorSpec":
@@ -74,29 +76,44 @@ class BehaviorSpec:
         return self
 
     def to(self, device) -> "BehaviorSpec":
-        for attr in ("clean_tokens", "corrupt_tokens", "correct_ids", "wrong_ids", "answer_index"):
+        for attr in ("clean_tokens", "corrupt_tokens", "correct_ids", "wrong_ids",
+                     "answer_index", "reference_logprobs"):
             t = getattr(self, attr)
             if t is not None:
                 setattr(self, attr, t.to(device))
         return self
 
-    # --- the faithful metric ----------------------------------------------
-    def logit_diff(self, logits: torch.Tensor, per_example: bool = False) -> torch.Tensor:
-        """Mean logit difference (correct - wrong) at the answer position.
+    # --- metrics ------------------------------------------------------------
+    def metric(self, logits: torch.Tensor, per_example: bool = False) -> torch.Tensor:
+        """Score the behavior with the configured metric (see circuitscope.metrics)."""
+        from circuitscope.metrics import METRICS
 
-        ``logits``: [batch, pos, d_vocab]. Uses the per-example last-real-token
-        index when available. Returns a scalar (or per-example vec).
-        """
         assert self.correct_ids is not None and self.wrong_ids is not None
-        idx = torch.arange(logits.shape[0], device=logits.device)
-        if self.answer_index is not None:
-            final = logits[idx, self.answer_index, :]  # [batch, vocab]
-        else:
-            final = logits[:, self.answer_position, :]
-        correct = final[idx, self.correct_ids]
-        wrong = final[idx, self.wrong_ids]
-        diff = correct - wrong
-        return diff if per_example else diff.mean()
+        return METRICS[self.metric_name](self, logits, per_example)
+
+    def attribution_metric(self, logits: torch.Tensor) -> torch.Tensor:
+        """Metric used for gradient attribution. Falls back to logit_diff for
+        metrics whose gradient vanishes at the clean run (e.g. neg_kl)."""
+        from circuitscope.metrics import GRADIENT_DEGENERATE_AT_CLEAN, METRICS
+
+        name = self.metric_name
+        if name in GRADIENT_DEGENERATE_AT_CLEAN:
+            name = "logit_diff"
+        return METRICS[name](self, logits, False)
+
+    def set_reference(self, clean_logits: torch.Tensor) -> None:
+        """Store the clean answer-position distribution (needed by neg_kl)."""
+        from circuitscope.metrics import _answer_logits
+
+        with torch.no_grad():
+            self.reference_logprobs = _answer_logits(self, clean_logits).log_softmax(-1)
+
+    def logit_diff(self, logits: torch.Tensor, per_example: bool = False) -> torch.Tensor:
+        """Logit difference (correct - wrong) at the answer position."""
+        from circuitscope.metrics import logit_diff as _ld
+
+        assert self.correct_ids is not None and self.wrong_ids is not None
+        return _ld(self, logits, per_example)
 
     def batch_size(self) -> int:
         return len(self.clean_prompts)
