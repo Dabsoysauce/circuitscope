@@ -27,6 +27,19 @@ Two granularities of circuit:
 * **`--mode features`**: nodes are individual **SAE features** across all layers —
   the frontier granularity of Marks et al. (2024) / attribution graphs.
 
+And a fully automated path — describe the behavior in English:
+
+```bash
+export ANTHROPIC_API_KEY=...       # needed at generation time only
+circuitscope --describe "the model knows country -> capital facts"
+```
+
+`--describe` has Claude draft clean/corrupt prompt pairs, **causally validates
+each pair against the subject model itself** (aligned token positions,
+single-token answers, per-example logit-diff gap), regenerates failures, and
+caches the validated dataset as JSON so it runs offline afterwards
+([autospec.py](circuitscope/autospec.py)).
+
 ---
 
 ## What it does
@@ -136,6 +149,37 @@ detectors** (L5/L3 → "Gerrard/Avery"), a **specific-name feature** (L11 →
 (over a 40% errors-only baseline), completeness 100%. Error nodes (the part the
 SAE can't reconstruct) are kept as the uninterpreted remainder, per the
 literature — the headline is how few *features* are needed on top of them.
+
+## Benchmarked against published ground truth
+
+`python -m circuitscope.benchmark` scores discovery against the *known* circuits
+([benchmark.py](circuitscope/benchmark.py)) — precision/recall of the top-k ranked
+nodes (k = ground-truth size) vs. Wang et al.'s 26-head IOI circuit and Hanna et
+al.'s greater-than circuit. GPT-2 small, CPU, 8 prompt pairs:
+
+| Behavior | Method | P@k | R@k | F1 |
+| --- | --- | --- | --- | --- |
+| ioi | EAP edge mass | 0.73 | 0.73 | 0.73 |
+| ioi | node patching | 0.65 | 0.65 | 0.65 |
+| greater_than | node patching | 0.64 | 0.64 | 0.64 |
+| greater_than | EAP edge mass | 0.46 | 0.46 | 0.46 |
+
+Per-class recall on IOI (EAP): **100% on every primary class** — name movers,
+negative name movers, S-inhibition, induction, and duplicate-token heads. The
+misses are exactly the classes direct-effect methods are known to be blind to:
+previous-token heads (act via composition with induction heads, not directly on
+the answer) and backup name movers (only activate when the primary heads are
+ablated). Greater-than attention heads operate positionally on the year digits,
+which aggregate-position patching dilutes — a known limitation, listed rather
+than hidden.
+
+## Metrics
+
+`--metric` selects the behavior metric everywhere (attribution + validation):
+`logit_diff` (default), `prob_diff`, `logprob`, and `neg_kl` — the standard
+faithfulness-reporting metric. `neg_kl`'s gradient vanishes at the clean run by
+definition, so when selected, attribution falls back to logit-diff gradients and
+only validation uses KL ([metrics.py](circuitscope/metrics.py)).
 
 ## Built-in behaviors
 
