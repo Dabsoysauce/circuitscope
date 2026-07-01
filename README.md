@@ -42,6 +42,10 @@ caches the validated dataset as JSON so it runs offline afterwards
 
 ---
 
+**▶ [Interactive explainer](https://dabsoysauce.github.io/circuitscope/explainer.html)** —
+a six-step visual walkthrough of the whole pipeline ([docs/explainer.html](docs/explainer.html),
+open locally in any browser; every number in it is a real measurement from this repo).
+
 ## What it does
 
 ```

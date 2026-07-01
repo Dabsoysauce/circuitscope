@@ -1,0 +1,205 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>circuitscope — how it works</title>
+<style>
+  body { margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background:#0d1117; color:#e6edf3;
+         display:flex; justify-content:center; }
+  #wrap { width:720px; max-width:95vw; padding:28px 0 60px; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  .sub { color:#8b949e; font-size:13px; margin-bottom:16px; }
+  #chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  #chips button { font-size:12px; padding:4px 10px; }
+  button { background:transparent; color:#e6edf3; border:1px solid #30363d; border-radius:6px;
+           padding:6px 14px; cursor:pointer; }
+  button:hover { background:#21262d; }
+  button:disabled { opacity:0.4; cursor:default; }
+  button.active { background:#21262d; font-weight:600; }
+  svg { background:#161b22; border-radius:12px; width:100%; }
+  #cap { min-height:88px; padding:12px 14px; margin-top:10px; background:#161b22;
+         border-radius:12px; font-size:14px; line-height:1.55; }
+  #nav { display:flex; gap:8px; margin-top:10px; align-items:center; }
+  #pos { color:#8b949e; font-size:13px; margin-left:auto; }
+  a { color:#58a6ff; }
+</style></head>
+<body><div id="wrap">
+<h1>circuitscope</h1>
+<div class="sub">How automated circuit discovery works, in six steps — every number below is a real measurement from
+<a href="https://github.com/Dabsoysauce/circuitscope">the pipeline</a> running on GPT-2 small.</div>
+<div id="chips"></div>
+<svg id="stage" viewBox="0 0 680 400" role="img" aria-label="Pipeline stage visualization"></svg>
+<div id="cap"></div>
+<div id="nav">
+  <button id="prev">&#8592; Back</button>
+  <button id="next">Next step &#8594;</button>
+  <span id="pos"></span>
+</div>
+</div>
+<script>
+const C = { blue:'#58a6ff', red:'#f85149', green:'#3fb950', amber:'#d29922',
+            txt:'#e6edf3', mut:'#8b949e', hint:'#484f58', card:'#0d1117' };
+const NS='http://www.w3.org/2000/svg';
+const svg=document.getElementById('stage');
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);(parent||svg).appendChild(e);return e;}
+function txt(x,y,s,size,fill,anchor,parent,mono){const t=el('text',{x,y,'font-size':size||12,fill:fill||C.txt,'text-anchor':anchor||'start'},parent);if(mono)t.setAttribute('font-family','ui-monospace,monospace');t.textContent=s;return t;}
+function rng(seed){let s=seed;return()=>{s=(s*16807)%2147483647;return s/2147483647;};}
+
+const headPos=(L,H)=>({x:70+H*46,y:352-L*27});
+function drawModelGrid(g,faint){
+  for(let L=0;L<12;L++){
+    txt(28,headPos(L,0).y+4,'L'+L,10,C.hint,'end',g);
+    for(let H=0;H<12;H++){const p=headPos(L,H);el('circle',{cx:p.x,cy:p.y,r:4,fill:C.hint,'fill-opacity':faint||0.35},g);}
+    const mp=headPos(L,12);el('rect',{x:mp.x-2,y:mp.y-5,width:22,height:10,rx:3,fill:C.hint,'fill-opacity':faint||0.35},g);
+  }
+}
+function curve(g,a,b,color,w,op){const mx=(a.x+b.x)/2+22,my=(a.y+b.y)/2;el('path',{d:`M${a.x},${a.y} Q${mx},${my} ${b.x},${b.y}`,fill:'none',stroke:color,'stroke-width':w,'stroke-opacity':op},g);}
+const IOI=[
+  {n:'mlp0',L:0,H:12,role:'token processing',c:C.amber,left:1},
+  {n:'a2.h2',L:2,H:2,role:'previous token',c:C.hint},
+  {n:'a3.h0',L:3,H:0,role:'duplicate token',c:C.blue},
+  {n:'a5.h5',L:5,H:5,role:'induction',c:C.blue},
+  {n:'a6.h9',L:6,H:9,role:'induction',c:C.blue},
+  {n:'a7.h9',L:7,H:9,role:'S-inhibition',c:C.amber},
+  {n:'a8.h6',L:8,H:6,role:'S-inhibition',c:C.amber},
+  {n:'a8.h10',L:8,H:10,role:'S-inhibition',c:C.amber},
+  {n:'a9.h9',L:9,H:9,role:'name mover',c:C.green},
+  {n:'a10.h7',L:10,H:7,role:'name mover',c:C.green},
+  {n:'a11.h10',L:11,H:10,role:'negative mover',c:C.red,left:1},
+];
+const IOIedges=[[0,3],[0,5],[1,3],[2,3],[3,5],[3,6],[4,6],[5,7],[6,7],[7,8],[8,9],[8,10],[9,10]];
+function drawCircuit(g,labels){
+  drawModelGrid(g,0.15);
+  IOIedges.forEach(([i,j])=>{curve(g,headPos(IOI[i].L,IOI[i].H),headPos(IOI[j].L,IOI[j].H),C.blue,1.8,0.6);});
+  [8,9,10].forEach(i=>{const p=headPos(IOI[i].L,IOI[i].H);curve(g,p,{x:620,y:60},i===10?C.red:C.blue,2.2,0.7);});
+  txt(628,58,'logits',11,C.mut,'start',g);
+  IOI.forEach(nd=>{const p=headPos(nd.L,nd.H);el('circle',{cx:p.x,cy:p.y,r:8,fill:nd.c,'fill-opacity':0.9},g);
+    if(labels){const left=!!nd.left;txt(left?p.x-11:p.x+11,p.y+4,nd.n+' · '+nd.role,10,C.mut,left?'end':'start',g);}});
+}
+
+const steps=[
+{chip:'1 · Contrast',title:'Define the behavior as a contrast',
+cap:'<b>A behavior is a matched pair of prompts, not an example.</b> The clean prompt carries the signal; the corrupt prompt swaps one word to remove it while keeping every token position aligned. The logit difference between the correct and wrong answer is the measurable quantity every later stage patches, ablates, and attributes. Measured on GPT-2: +4.34 clean vs −1.03 corrupt.',
+draw(g){
+  el('rect',{x:30,y:40,width:400,height:64,rx:10,fill:'none',stroke:C.green,'stroke-width':1.5},g);
+  txt(44,64,'clean',11,C.green,'start',g);
+  txt(44,88,'“When Mary and John went to the store, John gave a drink to”',12.5,C.txt,'start',g);
+  el('rect',{x:30,y:130,width:400,height:64,rx:10,fill:'none',stroke:C.red,'stroke-width':1.5},g);
+  txt(44,154,'corrupt · one word swapped',11,C.red,'start',g);
+  txt(44,178,'“When Mary and John went to the store, Paul gave a drink to”',12.5,C.txt,'start',g);
+  el('rect',{x:276,y:165,width:36,height:18,rx:4,fill:C.red,'fill-opacity':0.25},g);
+  txt(340,236,'logit(“ Mary”) − logit(“ John”)',13,C.mut,'middle',g);
+  const base=330, scale=14;
+  el('line',{x1:120,y1:base,x2:560,y2:base,stroke:C.hint,'stroke-width':1},g);
+  el('rect',{x:200,y:base-4.34*scale,width:70,height:4.34*scale,rx:4,fill:C.green,'fill-opacity':0.85},g);
+  txt(235,base-4.34*scale-8,'+4.34',13,C.green,'middle',g);
+  txt(235,base+18,'clean',12,C.mut,'middle',g);
+  el('rect',{x:390,y:base,width:70,height:1.03*scale,rx:4,fill:C.red,'fill-opacity':0.85},g);
+  txt(425,base+1.03*scale+16,'−1.03  corrupt',12,C.red,'middle',g);
+  el('path',{d:`M330,${base-4.34*scale} L330,${base+1.03*scale}`,stroke:C.mut,'stroke-width':1,'stroke-dasharray':'3 3'},g);
+  el('path',{d:`M324,${base-4.34*scale} L336,${base-4.34*scale} M324,${base+1.03*scale} L336,${base+1.03*scale}`,stroke:C.mut,'stroke-width':1},g);
+  txt(330,base-4.34*scale-10,'the gap a circuit must explain',10.5,C.mut,'middle',g);
+}},
+{chip:'2 · EAP',title:'Score all 32,491 edges in one backward pass',
+cap:'<b>Edge attribution patching.</b> The model is a graph: input, 144 heads, 12 MLPs, logits, connected through the additive residual stream. Patching every edge one at a time would take 32,491 forward passes; EAP approximates them all with one clean pass, one corrupt pass, and one backward pass — score(u→d) = (aᶜᵒʳʳᵘᵖᵗ − aᶜˡᵉᵃⁿ) · ∂metric/∂input_d.',
+draw(g){
+  const r=rng(7);
+  for(let i=0;i<170;i++){
+    const L1=Math.floor(r()*10),L2=L1+1+Math.floor(r()*(11-L1));
+    curve(g,headPos(L1,Math.floor(r()*13)),headPos(L2,Math.floor(r()*13)),r()>0.5?C.blue:C.red,0.6,0.15);
+  }
+  IOIedges.forEach(([i,j])=>{curve(g,headPos(IOI[i].L,IOI[i].H),headPos(IOI[j].L,IOI[j].H),C.blue,1.6,0.75);});
+  [8,9].forEach(i=>curve(g,headPos(IOI[i].L,IOI[i].H),{x:620,y:60},C.blue,2,0.8));
+  curve(g,headPos(11,10),{x:620,y:60},C.red,2,0.8);
+  drawModelGrid(g);
+  txt(628,58,'logits',11,C.mut,'start',g);
+  el('rect',{x:440,y:330,width:216,height:44,rx:8,fill:C.card},g);
+  txt(548,348,'32,491 edges scored',12,C.txt,'middle',g);
+  txt(548,366,'3 passes total, not 32,491',11,C.mut,'middle',g);
+}},
+{chip:'3 · Prune',title:'Prune to the minimal connected circuit',
+cap:'<b>ACDC-style search.</b> Edges are ranked by |score| and a binary search finds the smallest connected top-k subgraph that still recovers the target fraction of the behavior — each candidate checked with an exact ablated forward pass, never the approximation. What survives on IOI is the textbook circuit: duplicate-token → induction → S-inhibition → name movers, with a negative mover pushing back.',
+draw(g){drawCircuit(g,true);}},
+{chip:'4 · Validate',title:'Prove it causally: faithfulness and completeness',
+cap:'<b>Two exact tests.</b> Faithfulness: run with only the circuit’s edges (everything else ablated to corrupt values) — how much behavior survives? Completeness: ablate only the circuit — it should collapse (measured: 100%). The curve shows percolation: nothing flows until a connected path exists, then recovery climbs with the edge budget.',
+draw(g){
+  const X=90,Y=330,W=440,H=250;
+  el('line',{x1:X,y1:Y,x2:X+W,y2:Y,stroke:C.hint,'stroke-width':1},g);
+  el('line',{x1:X,y1:Y,x2:X,y2:Y-H,stroke:C.hint,'stroke-width':1},g);
+  const pts=[[0,0],[44,0],[138,0.4],[274,37],[552,41],[829,62],[924,70]];
+  const mx=1000;
+  const path=pts.map((p,i)=>(i?'L':'M')+(X+p[0]/mx*W)+','+(Y-p[1]/100*H)).join(' ');
+  el('path',{d:path,fill:'none',stroke:C.blue,'stroke-width':2.5},g);
+  pts.forEach(p=>el('circle',{cx:X+p[0]/mx*W,cy:Y-p[1]/100*H,r:4,fill:C.blue},g));
+  el('line',{x1:X,y1:Y-0.7*H,x2:X+W,y2:Y-0.7*H,stroke:C.green,'stroke-width':1,'stroke-dasharray':'4 4'},g);
+  txt(X+W+6,Y-0.7*H+4,'70% target',10.5,C.green,'start',g);
+  txt(X+W/2,Y+28,'edges kept (of 32,491)',11.5,C.mut,'middle',g);
+  const yl=txt(X-44,Y-H/2,'behavior recovered',11.5,C.mut,'middle',g);yl.setAttribute('transform',`rotate(-90 ${X-44} ${Y-H/2})`);
+  [0,25,50,75,100].forEach(v=>txt(X-8,Y-v/100*H+4,v+'%',10,C.hint,'end',g));
+  txt(X+180,Y-14,'percolation: no connected path, no signal',10.5,C.mut,'start',g);
+  el('rect',{x:566,y:70,width:104,height:70,rx:8,fill:C.card},g);
+  txt(618,92,'completeness',11,C.mut,'middle',g);
+  txt(618,120,'100%',22,C.green,'middle',g);
+}},
+{chip:'5 · Label',title:'Name the parts automatically — down to SAE features',
+cap:'<b>No human in the loop.</b> Attention patterns identify what each head reads (head 9.9 attends to the indirect-object name, weight 0.86); decoder directions pushed through the unembedding reveal what each part promotes. At SAE-feature granularity the circuit becomes concepts: a literal “Steven” name feature, “X and Y” conjunction detectors, subject-tracking features — 80% faithful over a 40% errors-only baseline.',
+draw(g){
+  const rows=[
+    {y:74,name:'L11.f6012',role:'specific name “Steven”',toks:[' Steve',' Steven','Steve'],c:C.green,ie:'+0.61'},
+    {y:144,name:'L7.f18518',role:'“X and Y” conjunction',toks:['and',' &',' AND'],c:C.green,ie:'+2.75'},
+    {y:214,name:'L7.f8836',role:'subject tracking',toks:['’s',' himself',' herself'],c:C.green,ie:'+1.39'},
+    {y:284,name:'L5.f9231',role:'person-name detector',toks:[' Gerrard',' Spielberg','sonian'],c:C.green,ie:'+1.10'},
+    {y:354,name:'L3.f13879',role:'place-name distractor',toks:['ongyang','bard','ohm'],c:C.red,ie:'−0.77'}
+  ];
+  rows.forEach(rw=>{
+    el('circle',{cx:60,cy:rw.y,r:10,fill:rw.c,'fill-opacity':0.85},g);
+    txt(80,rw.y-6,rw.name,12.5,C.txt,'start',g,true);
+    txt(80,rw.y+12,rw.role+'  ·  effect '+rw.ie,11,C.mut,'start',g);
+    rw.toks.forEach((t,i)=>{
+      const x=330+i*110;
+      el('rect',{x,y:rw.y-13,width:100,height:24,rx:5,fill:C.card},g);
+      txt(x+50,rw.y+3,t,11.5,C.txt,'middle',g,true);
+    });
+  });
+  txt(330,52,'top tokens this feature’s direction promotes',11,C.mut,'start',g);
+}},
+{chip:'6 · Score',title:'Grade it against the published answer key',
+cap:'<b>Faithful is not enough — does it match what humans found?</b> Scored against Wang et al.’s hand-derived 26-head IOI circuit: F1 0.73, with 100% recall on every primary head class. The two missed classes are exactly the ones direct-effect methods are provably blind to — previous-token heads (act via composition) and backup movers (only wake when primaries are ablated). Months of manual analysis, reproduced in ~2 minutes on a laptop.',
+draw(g){
+  const rows=[['name movers',100],['negative movers',100],['S-inhibition',100],['induction',100],['duplicate token',100],['backup movers',38],['previous token',0]];
+  const X=200,W=380;
+  rows.forEach((rw,i)=>{
+    const y=54+i*44;
+    txt(X-10,y+13,rw[0],12.5,C.txt,'end',g);
+    el('rect',{x:X,y,width:W,height:19,rx:5,fill:C.hint,'fill-opacity':0.25},g);
+    if(rw[1]>0)el('rect',{x:X,y,width:W*rw[1]/100,height:19,rx:5,fill:rw[1]===100?C.green:C.amber,'fill-opacity':0.85},g);
+    txt(X+W+10,y+14,rw[1]+'%',12,rw[1]===100?C.green:C.mut,'start',g);
+  });
+  txt(X+W/2,388,'recall vs Wang et al. (2022) · overall F1 0.73',11.5,C.mut,'middle',g);
+}}
+];
+
+let cur=0;
+const chips=document.getElementById('chips'),cap=document.getElementById('cap'),pos=document.getElementById('pos');
+steps.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.textContent=s.chip;
+  b.addEventListener('click',()=>show(i));chips.appendChild(b);
+});
+function show(i){
+  cur=i;svg.innerHTML='';
+  const g=el('g',{opacity:0});
+  const title=txt(30,26,steps[i].title,15,C.txt,'start',g);title.setAttribute('font-weight','600');
+  steps[i].draw(g);
+  requestAnimationFrame(()=>{g.style.transition='opacity 0.25s';g.setAttribute('opacity',1);});
+  cap.innerHTML=steps[i].cap;
+  pos.textContent=(i+1)+' / '+steps.length;
+  [...chips.children].forEach((c,j)=>c.classList.toggle('active',j===i));
+  document.getElementById('prev').disabled=i===0;
+  document.getElementById('next').disabled=i===steps.length-1;
+}
+document.getElementById('prev').addEventListener('click',()=>show(Math.max(0,cur-1)));
+document.getElementById('next').addEventListener('click',()=>show(Math.min(steps.length-1,cur+1)));
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight')show(Math.min(steps.length-1,cur+1));
+  if(e.key==='ArrowLeft')show(Math.max(0,cur-1));
+});
+show(0);
+</script></body></html>

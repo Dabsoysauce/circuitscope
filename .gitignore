@@ -17,3 +17,6 @@ outputs/
 # OS / editor
 .DS_Store
 .ipynb_checkpoints/
+
+# Local tooling
+.claude/
