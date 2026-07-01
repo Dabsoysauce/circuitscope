@@ -46,6 +46,8 @@ caches the validated dataset as JSON so it runs offline afterwards
 a six-step visual walkthrough of the whole pipeline ([docs/explainer.html](docs/explainer.html),
 open locally in any browser; every number in it is a real measurement from this repo).
 
+[![Six-step walkthrough of the circuitscope pipeline](docs/explainer.gif)](https://dabsoysauce.github.io/circuitscope/explainer.html)
+
 ## What it does
 
 ```

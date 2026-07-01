@@ -201,5 +201,6 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight')show(Math.min(steps.length-1,cur+1));
   if(e.key==='ArrowLeft')show(Math.max(0,cur-1));
 });
-show(0);
+const q=parseInt(new URLSearchParams(location.search).get('step'),10);
+show(q>=1&&q<=steps.length?q-1:0);
 </script></body></html>
